@@ -1,0 +1,77 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exercise-4
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+  namespace: exercise-4
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: azurefile-ultra
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+  namespace: exercise-4
+spec:
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: special-app
+      effect: NoSchedule
+  containers:
+    - name: c1
+      image: alpine:latest
+      command: ["/bin/sh"]
+      args:
+        - -c
+        - |
+          echo "Starting PVC test..."
+          echo "Checking if volume is mounted..."
+          
+          if [ -d "/data" ]; then
+            echo "✅ Volume mounted successfully at /data"
+            
+            echo "Attempting to touch a test file..."
+            touch /data/test-file.txt
+            if [[ $? -eq 0 ]]; then
+              echo "✅ Successfully created test-file.txt"
+              echo "Current timestamp: $(date)" > /data/test-file.txt
+              echo "File content:"
+              cat /data/test-file.txt
+            else
+              echo "❌ Failed to create test file - check PVC binding status"
+            fi
+            
+            echo "Listing files in /data after touch operation:"
+            ls -la /data
+          else
+            echo "❌ Volume not mounted at /data"
+          fi
+          
+          echo "Keeping container alive for debugging..."
+          sleep 3600
+      volumeMounts:
+        - name: my-volume
+          mountPath: /data
+      resources:
+        requests:
+          memory: "32Mi"
+          cpu: "50m"
+        limits:
+          memory: "64Mi"
+          cpu: "100m"
+  volumes:
+    - name: my-volume
+      persistentVolumeClaim:
+        claimName: my-pvc
+  restartPolicy: Never

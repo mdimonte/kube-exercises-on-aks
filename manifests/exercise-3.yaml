@@ -1,0 +1,134 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exercise-3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: exercise-3
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: special-app
+          effect: NoSchedule
+      containers:
+        - name: frontend
+          image: alpine:latest
+          command: ["/bin/sh"]
+          args: 
+            - -c
+            - |
+              # Install curl
+              apk add --no-cache curl
+              
+              # Curl the backend
+              while true; do
+                HTTP_CODE=$(curl --connect-timeout 1 -s -o /dev/null -w "%{http_code}" http://backend-service)
+                if [[ "$HTTP_CODE" -ne "200" ]]; then
+                  echo "$(date '+%Y-%m-%d %H:%M:%S') ❌ Failed to reach backend service, HTTP code: $HTTP_CODE"
+                  rm -f /tmp/healthy
+                else
+                  echo "$(date '+%Y-%m-%d %H:%M:%S') ✅ Successfully reached backend service, HTTP code: $HTTP_CODE"
+                  touch /tmp/healthy
+                fi
+                sleep 1
+              done
+          readinessProbe:
+            exec:
+              command:
+                - cat
+                - /tmp/healthy
+            initialDelaySeconds: 1
+            periodSeconds: 1
+            failureThreshold: 1
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: exercise-3
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: special-app
+          effect: NoSchedule
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+              name: http
+              protocol: TCP
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "1"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: exercise-3
+spec:
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-frontend-to-backend
+  namespace: exercise-3
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+    - Ingress
+  ingress: []
+  # ingress:
+  #   - from:
+  #     - podSelector:
+  #         matchLabels:
+  #           app: frontend

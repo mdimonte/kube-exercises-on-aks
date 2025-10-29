@@ -1,0 +1,49 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exercise-2
+  labels:
+    pod-security.kubernetes.io/enforce: "restricted"
+---
+# start a deployment that use an unsage 'sysctl' and acces the hostNetwork
+# please transfrom this pod into a deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+  namespace: exercise-2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: privileged-pod
+  template:
+    metadata:
+      labels:
+        app: privileged-pod
+    spec:
+      hostPID: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+        sysctls:
+          - name: net.ipv4.ip_forward
+            value: "1"
+      containers:
+        - name: c1
+          image: alpine:latest
+          command: ["sleep", "3600"]
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
